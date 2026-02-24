@@ -1,0 +1,62 @@
+! ============================================================
+! Cisco Catalyst 2950 — S1-CyberRange
+! ============================================================
+
+hostname S1-CyberRange
+no ip domain-lookup
+
+! ------------------------------------------------------------
+! Switch management IP (VLAN 1)
+! ------------------------------------------------------------
+interface Vlan1
+ ip address 192.168.20.2 255.255.255.0
+ no shutdown
+
+ip default-gateway 192.168.20.1
+
+! ------------------------------------------------------------
+! VLANs
+! ------------------------------------------------------------
+vlan 20
+ name TARGET
+
+vlan 30
+ name SPLUNK
+
+! ------------------------------------------------------------
+! Access ports — VLAN 20 (Target) — Fa0/1–4
+! ------------------------------------------------------------
+interface range FastEthernet0/1 - 4
+ description ACCESS_VLAN20_TARGET
+ switchport mode access
+ switchport access vlan 20
+ no shutdown
+
+! ------------------------------------------------------------
+! Access ports — VLAN 30 (Splunk) — Fa0/5–8
+! ------------------------------------------------------------
+interface range FastEthernet0/5 - 8
+ description ACCESS_VLAN30_SPLUNK
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+
+! ------------------------------------------------------------
+! Trunk port — uplink to router — Fa0/24
+! VLANs 1002-1005 required to avoid "Bad VLAN list" rejection
+! (legacy reserved VLANs for non-Ethernet L2 technologies)
+! ------------------------------------------------------------
+interface FastEthernet0/24
+ description TRUNK_TO_ROUTER
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,1002-1005
+ no shutdown
+
+! ------------------------------------------------------------
+! Shut down unused ports
+! ------------------------------------------------------------
+interface range FastEthernet0/9 - 23
+ shutdown
+
+end
+write memory
