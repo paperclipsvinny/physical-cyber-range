@@ -4,7 +4,7 @@
 # Run this on the target Pi while it still has internet access,
 # then move it into the range.
 
-SPLUNK_IP="192.168.30.10"
+SPLUNK_IP="192.168.30.50"
 SPLUNK_PORT="9997"
 
 # Download and install the ARM64 forwarder package
@@ -29,4 +29,4 @@ sudo /opt/splunkforwarder/bin/splunk add monitor /var/log/syslog
 echo ""
 echo "Verifying connectivity to Splunk indexer..."
 nc -zv ${SPLUNK_IP} ${SPLUNK_PORT}
-# Expected: "Connection to 192.168.30.10 9997 port [tcp/*] succeeded!"
+# Expected: "Connection to 192.168.30.50 9997 port [tcp/*] succeeded!"
