@@ -1,9 +1,10 @@
 # Home Cyber Range
 A mix of my personal notes and an in-depth technical writeup from the process of setting up my own physical cyber range. Features: multi-VLAN, built mostly with Raspberry Pis and legacy Cisco hardware I got from my networking processor. Designed for practicing offensive security, defensive monitoring, and network engineering in a segmented environment.
-
+You can also read an overview level writeup here: saucedasecurity.com
 ---
 
 ## Hardware
+![Picture of the switch and router.](Images/IMG_3845.jpg)
 
 | Component | Device |
 |-----------|--------|
@@ -17,7 +18,8 @@ A mix of my personal notes and an in-depth technical writeup from the process of
 ---
 *I had originaly planned to use QEMU to run splunk enterprise on the RPi 4 but after hitting many issues, I pivoted to the Optiplex filling that role instead. 
 
-## Network Design
+## Network Design + Topology
+![Network Topology](Images/CyberRangeTopology.png)
 
 ### IP Scheme
 
@@ -317,7 +319,10 @@ Check: (1) firewall rules applied on Optiplex, (2) receiving port enabled in Spl
 
 ---
 
-## Planned Upgrades
+## Planned Upgrades (where I want to take this lab next)
 
-- **Active Directory lab** — laptop running Windows 10 VM + AD server, or cloud-hosted
-- **Second target** — RPi 4 running Juice Shop or Metasploitable on VLAN 20
+- **Active Directory lab** — laptop running Windows 10 VM + AD server, or cloud-hosted, so I can practice AD hacking.
+- **Second target** — RPi 4 running Juice Shop or Metasploitable on VLAN 20.
+- **Wireless AP* - Add a Linksys E5350 Router running OpenWRT to enable a wireless attack vector.
+- Adding a mail server (iRedMail or something similar) to enable studying phishing infastructure + email based attacks.
+- Suricata as a network IDS, for fine tuned rules and avoids splunk alert fatigue.   
