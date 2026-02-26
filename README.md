@@ -1,6 +1,10 @@
 # Home Cyber Range
-A mix of my personal notes and an in-depth technical writeup from the process of setting up my own physical cyber range. Features: multi-VLAN, built mostly with Raspberry Pis and legacy Cisco hardware I got from my networking processor. Designed for practicing offensive security, defensive monitoring, and network engineering in a segmented environment.
-You can also read an overview level writeup here: saucedasecurity.com
+A mix of personal notes and technical writeup from building my own physical cyber range. 
+
+*Features: multi-VLAN, built mostly with Raspberry Pis and legacy Cisco hardware I got from my networking processor. Designed for practicing offensive security, defensive monitoring, and network engineering in a segmented environment.*
+
+You can also read the overview level writeup at [saucedasecurity.com](https://saucedasecurity.com)
+
 ---
 
 ## Hardware
