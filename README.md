@@ -1,6 +1,5 @@
 # Home Cyber Range
-
-A physical, multi-VLAN cyber range built on Raspberry Pis and real Cisco hardware. Designed for practicing offensive security, defensive monitoring, and network engineering in a realistically segmented environment.
+A mix of my personal notes and an in-depth technical writeup from the process of setting up my own physical cyber range. Features: multi-VLAN, built mostly with Raspberry Pis and legacy Cisco hardware I got from my networking processor. Designed for practicing offensive security, defensive monitoring, and network engineering in a segmented environment.
 
 ---
 
@@ -10,12 +9,13 @@ A physical, multi-VLAN cyber range built on Raspberry Pis and real Cisco hardwar
 |-----------|--------|
 | Attacker | Raspberry Pi 5 — Kali Linux |
 | Target | Raspberry Pi 3 Model A+ — Ubuntu 20.04.5 LTS |
-| Defender/SIEM | Raspberry Pi 5 (8GB) — Splunk Enterprise via Docker |
+| SIEM/Indexer | Dell Optiplex — Windows 10, Splunk Enterprise |
+| Extra Target *(planned)* | Raspberry Pi 4 (8GB) — freed up from Splunk role*, will run Juice Shop or Metasploitable |
 | Router | Cisco 2621 |
 | Switch | Cisco Catalyst 2950 |
-| AP | Linksys E5350 (flashed with OpenWRT) |
 
 ---
+*I had originaly planned to use QEMU to run splunk enterprise on the RPi 4 but after hitting many issues, I pivoted to the Optiplex filling that role instead. 
 
 ## Network Design
 
@@ -32,41 +32,41 @@ Splunk gets its own VLAN for enterprise realism — in a real SOC, the monitorin
 ### Physical Wiring
 
 ```
-[RPi 5 Kali]
-     |
-     Fa0/0
-     |
+[RPi 5 — Kali Attacker]
+        |
+       Fa0/0
+        |
 [Cisco 2621 Router]
-     |
-     Fa0/1 (trunk)
-     |
-     Fa0/24 (trunk)
-     |
+        |
+       Fa0/1 (trunk)
+        |
+       Fa0/24 (trunk)
+        |
 [Cisco Catalyst 2950 Switch]
-     |              |
-  Fa0/1-4        Fa0/5-8
-  (VLAN 20)      (VLAN 30)
-     |              |
-[RPi 3A+ Target] [RPi Splunk]
+        |                    |
+    Fa0/1-4              Fa0/5-8
+    (VLAN 20)            (VLAN 30)
+        |                    |
+[RPi 3A+ — Target]    [Optiplex — Splunk]
 ```
 
 ### Router-on-a-Stick
 
-The Cisco 2621 only has one interface facing the switch, so inter-VLAN routing is done via subinterfaces on Fa0/1. Each subinterface gets `encapsulation dot1Q <vlan-id>`, which tags outgoing frames so the switch knows which VLAN they belong to. The switch port on the other end is configured as a trunk so it accepts these tagged frames rather than dropping them.
+The Cisco 2621 only has one interface facing the switch, so inter-VLAN routing is handled via subinterfaces on Fa0/1. Each subinterface gets `encapsulation dot1Q <vlan-id>`, which tags outgoing frames so the switch knows which VLAN they belong to. The switch port on the other end is configured as a trunk so it accepts tagged frames rather than dropping them.
 
 ---
 
 ## Router Setup
 
-**Hardware:** Cisco 2621  
-**Console:** COM3, baud 9600 (via PuTTY)  
+**Hardware:** Cisco 2621
+**Console:** COM3, baud 9600 (via PuTTY)
 **Config file:** [`router/config.ios`](router/config.ios)
 
 ### Password Recovery
 
-If the enable password is unknown, break into ROMMON mode:
+On first boot, the enable password was unknown, so break into ROMMON mode:
 
-1. In PuTTY: **right-click the title bar → Send Command → Break** while the router is booting
+1. In PuTTY: **right-click title bar → Send Command → Break** while the router is booting
 2. At the `rommon>` prompt, tell the router to ignore its startup config:
    ```
    confreg 0x2142
@@ -81,28 +81,29 @@ If the enable password is unknown, break into ROMMON mode:
    ```
 5. Reconfigure from scratch using [`router/config.ios`](router/config.ios)
 
-### Key config notes
+### Key Config Notes
 
-- `no ip domain-lookup` — stops the router trying to DNS-resolve mistyped commands, which would cause a long hang
+- `no ip domain-lookup` — stops the router trying to DNS-resolve mistyped commands, which causes a long hang
 - `ip routing` — enables L3 routing between interfaces (off by default on some IOS versions)
-- The parent interface `Fa0/1` has **no IP address** — IPs live on the subinterfaces only. Trunks don't need IPs; they're just links.
+- The parent interface `Fa0/1` has **no IP address** — IPs live on the subinterfaces only. Trunks are just links, not L3 interfaces.
 - `encapsulation dot1Q` implements 802.1Q frame tagging, which is what makes router-on-a-stick work
+
+> **Gotcha:** If the router config disappears after a reboot and the hostname has reverted, the config was never saved. Always run `write memory` before disconnecting. The config in [`router/config.ios`](router/config.ios) can be pasted in fresh in under a minute.
 
 ---
 
 ## Switch Setup
 
-**Hardware:** Cisco Catalyst 2950  
+**Hardware:** Cisco Catalyst 2950
 **Config file:** [`switch/config.ios`](switch/config.ios)
 
-### Key config notes
+### Key Config Notes
 
-- Management IP is on VLAN 1 (`192.168.20.2`), with the default gateway pointing at the router
-- `no ip domain-lookup` — same reason as the router
-- The trunk port `Fa0/24` uses `switchport trunk allowed vlan 10,20,30,1002-1005` — the `1002-1005` are legacy reserved VLANs that Cisco requires be present in the allowed list, otherwise the command is rejected with `Bad VLAN list`. These date back to when Cisco switches supported non-Ethernet L2 technologies (FDDI, Token Ring) and needed those VLANs to trunk alongside Ethernet VLANs.
-- Without a trunk port, tagged frames from the router's subinterfaces would be dropped — access ports only accept untagged frames for a single VLAN
+- Management IP is on VLAN 1 (`192.168.20.2`), default gateway pointing at the router
+- The trunk port `Fa0/24` uses `switchport trunk allowed vlan 10,20,30,1002-1005` — the `1002-1005` are legacy reserved VLANs that Cisco requires in the allowed list, otherwise the command is rejected with `Bad VLAN list`. These date back to when Cisco switches supported non-Ethernet L2 technologies (FDDI, Token Ring).
+- Without a trunk port, tagged frames from the router subinterfaces get dropped — access ports only accept untagged frames for a single VLAN
 
-### Verify after applying config
+### Verify After Applying Config
 
 ```
 show vlan brief
@@ -115,8 +116,8 @@ show running-config
 ## Attacker Setup (RPi 5 — Kali)
 
 1. Flash Kali Linux ARM64 image to SD card using Raspberry Pi Imager
-   - Hostname: `attacker`, username: `offsec`
-2. Set static IP by editing `/etc/network/interfaces`:
+   - Hostname: `attacker`, username: `target`
+2. Set static IP in `/etc/network/interfaces`:
    ```
    auto eth0
    iface eth0 inet static
@@ -133,137 +134,190 @@ See [`attacker/`](attacker/) for future tooling and scripts.
 ## Target Setup (RPi 3 Model A+ — Ubuntu 20.04)
 
 **Netplan config:** [`target/netplan.yaml`](target/netplan.yaml)
+**Forwarder setup:** [`target/setup-forwarder.sh`](target/setup-forwarder.sh)
 
-Ubuntu 20.04 manages networking via **Netplan** (YAML-based), not `/etc/network/interfaces`. The legacy `ifconfig` and `route` commands are also not installed by default — use `ip a` and `ip route` instead.
+Ubuntu 20.04 manages networking via **Netplan** (YAML-based), not `/etc/network/interfaces`. The legacy `ifconfig` and `route` commands are also not installed by default — you can use `ip a` and `ip route` instead.
 
 Copy [`target/netplan.yaml`](target/netplan.yaml) to `/etc/netplan/01-netcfg.yaml` and apply:
 ```bash
 sudo netplan apply
 ```
+Also, if you can't find where the netplan is located or what it's called, you can find it with  
+```bash
+ls -l /etc/netplan/
+```
 
 ### Password Recovery (Ubuntu on RPi)
 
-The typical `init=/bin/bash` kernel parameter causes a **kernel panic** on this setup. The reason: `init=/bin/bash` is interpreted during the initramfs stage, before the real root filesystem is mounted — and initramfs doesn't have bash, so the kernel panics trying to find it.
+The typical `init=/bin/bash` kernel parameter causes a **kernel panic** here. The reason: `init=/bin/bash` is interpreted during the initramfs stage, before the real root filesystem is mounted — and initramfs doesn't have bash, so the kernel panics trying to find it.
+
+The boot sequence on this image is: U-Boot → initramfs loads into RAM → kernel starts and mounts initramfs as temporary root → initramfs scripts find and mount the real root partition → systemd starts. The `init=` trick intercepts too early.
 
 The fix is to let initramfs complete normally, then intercept at the systemd level:
 
 1. Mount the SD card on another machine and open `cmdline.txt`
-2. Append `systemd.unit=emergency.target` to the existing line (do not add a new line — `cmdline.txt` must be a single line)
-3. Boot the Pi — it will drop into a root emergency shell
-4. Remount the root filesystem as read-write and change the password:
+2. Append `systemd.unit=emergency.target` to the end of the existing line — **do not add a new line**, `cmdline.txt` must be exactly one line
+3. The full line will look like:
+   ```
+   elevator=deadline net.ifnames=0 console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 rootwait fixrtc systemd.unit=emergency.target
+   ```
+4. Boot the Pi — it drops into a root emergency shell
+5. Remount root as read-write and change the password:
    ```bash
    mount -o remount,rw /
    passwd root
    sync
    ```
-5. Shut down, remove `systemd.unit=emergency.target` from `cmdline.txt`, and boot normally
+6. Shut down, remove `systemd.unit=emergency.target` from `cmdline.txt`, and boot normally
+
+### Splunk Universal Forwarder
+
+Run [`target/setup-forwarder.sh`](target/setup-forwarder.sh) while the Pi still has internet access (before plugging it into the isolated range). It installs the ARM64 forwarder, points it at the Optiplex, and sets it to ship `auth.log` and `syslog`.
 
 ---
 
-## Splunk Setup (RPi 5 — Docker + QEMU)
+## Splunk Setup (Optiplex — Windows 10)
 
-**Scripts:** [`splunk/docker-run.sh`](splunk/docker-run.sh), [`splunk/binfmt-qemu-x86_64.service`](splunk/binfmt-qemu-x86_64.service)
+**Firewall rules:** [`optiplex/firewall-rules.bat`](optiplex/firewall-rules.bat)
 
-Splunk Enterprise only publishes AMD64 images — no ARM64 support. On the RPi, we work around this with Docker + QEMU user-mode emulation, which lets the ARM64 host run AMD64 containers.
+After exhausting the RPi + Docker + QEMU path (see [Why Not the RPi?](#why-not-the-rpi----full-qemusplunk-post-mortem) below), Splunk runs on a Dell Optiplex with Windows 10. This is also more architecturally realistic — production SIEMs run on dedicated x86 hardware.
 
-### 1. Install dependencies
+### Installation
 
-```bash
-sudo apt install -y docker.io qemu-user-static binfmt-support
+Download the `.msi` installer from splunk.com and run it. Starts with no issues on native x86.
+
+### Static IP (set before plugging into the range)
+
+**Network Settings → Ethernet → Edit:**
+
+| Field | Value |
+|-------|-------|
+| IP | 192.168.30.50 |
+| Subnet | 255.255.255.0 |
+| Gateway | 192.168.30.1 |
+| DNS | 8.8.8.8 |
+
+### Firewall Rules
+
+Run [`optiplex/firewall-rules.bat`](optiplex/firewall-rules.bat) in an elevated prompt:
+
+```bat
+netsh advfirewall firewall add rule name="Allow ICMP" protocol=icmpv4 dir=in action=allow
+netsh advfirewall firewall add rule name="Splunk Forwarder" dir=in action=allow protocol=TCP localport=9997
 ```
 
-- `qemu-user-static` — provides the QEMU binary that translates AMD64 instructions to ARM64 at runtime
-- `binfmt-support` — tells the Linux kernel to invoke QEMU automatically when it encounters an AMD64 ELF binary
-- `docker.io` — runs the containers
+### Enable Receiving in Splunk UI
 
-```bash
-sudo systemctl enable docker
-sudo systemctl start docker
-sudo usermod -aG docker $USER
-newgrp docker   # activates group membership without logging out
+**Settings → Forwarding and Receiving → Configure Receiving → New → Port 9997**
+
+Verify it's listening:
+```bat
+netstat -an | findstr 9997
+# Should show: TCP    0.0.0.0:9997    ...    LISTENING
 ```
 
-### 2. Register the QEMU binfmt handler
-
-The `binfmt-support` package sometimes doesn't register the handler automatically. If `docker run --platform linux/amd64` fails with an exec format error, register it manually:
+### Verify Forwarder Connectivity from the Pi
 
 ```bash
-printf ':qemu-x86_64:M:0:\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-x86_64-static:F\n' \
-  | sudo tee /proc/sys/fs/binfmt_misc/register
+nc -zv 192.168.30.50 9997
+# Expected: Connection to 192.168.30.50 9997 port [tcp/*] succeeded!
 ```
 
-This write to `/proc` doesn't survive a reboot. To make it persistent, install the systemd service:
+---
+
+## Why Not the RPi? — Full QEMU/Splunk Post-Mortem
+
+Splunk has no ARM64 build. The only path to running it on a Pi is Docker + QEMU userspace emulation — the ARM64 kernel transparently hands AMD64 binaries to a QEMU interpreter at runtime. This worked for basic containers but Splunk's entrypoint pushed it past what QEMU can handle.
+
+### What Actually Worked
+
+- Registering the binfmt_misc handler (via Python raw bytes — see below)
+- Running lightweight AMD64 containers: `docker run --platform linux/amd64 alpine uname -m` → `x86_64`
+- Splunk's Ansible configuration playbook — 58 of 60 tasks completed over ~24 minutes
+
+### The binfmt Registration Problem
+
+Manual registration via `echo` or `printf` fails because shell escaping corrupts the binary magic bytes — the offset field ends up as letter `O` instead of zero, and the path gets a hyphen dropped. The only reliable method is Python writing raw bytes directly:
 
 ```bash
-sudo cp splunk/binfmt-qemu-x86_64.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable binfmt-qemu-x86_64.service
-sudo systemctl start binfmt-qemu-x86_64.service
+sudo python3 -c "
+entry = b':qemu-x86_64:M:0:\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-x86_64-static:F\n'
+open('/proc/sys/fs/binfmt_misc/register','wb').write(entry)"
 ```
 
-Verify registration:
-```bash
-cat /proc/sys/fs/binfmt_misc/qemu-x86_64
+This write doesn't survive a reboot — install [`splunk/binfmt-qemu-x86_64.service`](splunk/binfmt-qemu-x86_64.service) to persist it.
+
+### Where It Broke: sudo Inside the Container
+
+The official `splunk/splunk` image uses an Ansible-based entrypoint that calls `sudo` for privilege escalation. QEMU userspace emulation does not correctly emulate the setuid bit on executables, so every `sudo` call fails:
+
+```
+sudo: effective uid is not 0, is /usr/bin/sudo on a file system with the 'nosuid' option set?
 ```
 
-Test with a lightweight AMD64 container before pulling the full Splunk image:
-```bash
-docker run --platform linux/amd64 --rm alpine uname -m
-# should output: x86_64
-```
+Setting `ANSIBLE_BECOME=false` and `--user root` got Ansible past this — all 58 configuration tasks ran. But Ansible's hardcoded final task called `splunk start` without `--run-as-root`, so Splunk exited rc=1.
 
-### 3. Run Splunk
+### The Final Wall: splunkweb Never Starts
 
-```bash
-bash splunk/docker-run.sh
-docker logs -f splunk   # watch startup, takes a few minutes
-```
+After manually starting Splunk post-Ansible with `--run-as-root`, splunkd (the backend) came up fine. But `splunkweb` — the Python/Tornado/React web UI — never initialized. Port 8000 never appeared in `/proc/net/tcp6`, and `web_service.log` was never written (meaning the process crashed before it could log anything).
 
-Splunk UI will be available at `http://192.168.30.50:8000`  
-Default login: `admin` / `CyberRangeP4ssword!`
+The root cause: splunkweb is a heavyweight Python application. Under full x86_64 instruction emulation on ARM64, every CPU instruction in the Python interpreter and Splunk's web stack is being translated in real time. The startup overhead is too great for the process to initialize successfully.
 
-**Note on `--privileged`:** The Docker run command uses `--privileged`, which gives the container full access to host capabilities and removes `nosuid` restrictions. This is required for QEMU-based AMD64 emulation on ARM. It's a security concern in production but acceptable in an isolated lab.
+### Task Timings Under QEMU (for reference)
 
-**Note on performance:** Splunk running under QEMU emulation on an RPi will be slow under load. If performance becomes an issue:
-- Run Splunk off an SSD instead of the microSD card
-- Reduce indexing threads and search concurrency in `limits.conf`
-- Switch to RPi OS Lite (no desktop environment) to free up RAM
-- Move Splunk to a more capable x86 machine (e.g., an old Optiplex)
+| Task | Duration |
+|------|----------|
+| Gathering Facts | ~43 seconds |
+| Generate user-seed.conf | ~40 seconds |
+| Check if requests_unixsocket exists | ~1 minute |
+| Update Splunk directory owner (recursive chown) | 8+ minutes |
+| Full Ansible playbook (58 tasks) | ~24 minutes |
+
+### Conclusion
+
+QEMU userspace emulation is fine for simple AMD64 containers. It is not viable for Splunk Enterprise — the combination of setuid emulation bugs and splunkweb's Python startup overhead is a hard ceiling. The RPi 4 originally intended for Splunk will instead become a second target node running Juice Shop or Metasploitable.
 
 ---
 
 ## Connectivity Verification
 
-Once everything is up, verify from the attacker Pi:
+From the attacker Pi once everything is up:
 
 ```bash
 ping 192.168.10.1   # local gateway (router Fa0/0)
 ping 192.168.20.1   # router subinterface for VLAN 20
-ping 192.168.20.50  # target
-ping 192.168.30.50  # splunk
+ping 192.168.20.50  # target Pi
+ping 192.168.30.50  # Splunk Optiplex
 ```
 
 ---
 
 ## Troubleshooting
 
-**Router config not saving after reboot**  
-Always run `write memory` (or `copy running-config startup-config`) before disconnecting the console cable. If the hostname reverts, the config wasn't saved.
+**Router config gone after reboot / hostname reverted**
+Config was not saved. Always `write memory` before disconnecting. Repaste [`router/config.ios`](router/config.ios).
 
-**`Bad VLAN list` error on switch trunk port**  
-The trunk allowed list must include VLANs 1002–1005. Use `switchport trunk allowed vlan 10,20,30,1002-1005` rather than trying to add VLANs incrementally.
+**`Bad VLAN list` error on switch trunk port**
+Must include legacy VLANs 1002-1005: `switchport trunk allowed vlan 10,20,30,1002-1005`.
 
-**VLAN 10 traffic not reaching targets through switch**  
-The trunk port allowed list defaults to VLAN 1 only. Explicitly add all VLANs: `switchport trunk allowed vlan 10,20,30,1002-1005`.
+**VLAN 10 traffic not reaching targets through switch**
+Trunk allowed list defaulted to VLAN 1 only. Explicitly set: `switchport trunk allowed vlan 10,20,30,1002-1005`.
 
-**`encapsulation dot1Q` overlap error on router**  
-If you see `% overlaps with FastEthernet0/1`, the parent interface still has an IP address. Remove it with `no ip address` on `Fa0/1` before configuring subinterfaces.
+**`encapsulation dot1Q` overlap error on router**
+Parent interface `Fa0/1` still has an IP. Run `no ip address` on `Fa0/1` before configuring subinterfaces.
 
-**`init=/bin/bash` causes kernel panic on Ubuntu RPi**  
-See the password recovery section under Target Setup above. Use `systemd.unit=emergency.target` instead.
+**`init=/bin/bash` causes kernel panic on Ubuntu RPi**
+Use `systemd.unit=emergency.target` instead — see password recovery under Target Setup.
 
-**QEMU binfmt handler not registered after reboot**  
-Install and enable `splunk/binfmt-qemu-x86_64.service` — see Splunk Setup step 2.
+**QEMU binfmt handler not registered after reboot**
+Install and enable [`splunk/binfmt-qemu-x86_64.service`](splunk/binfmt-qemu-x86_64.service).
 
-**Splunk container exits immediately**  
-Remove the old container first (`docker rm splunk`) before re-running `docker-run.sh`. Also ensure both volume directories exist (`~/splunk/etc` and `~/splunk/data`).
+**Splunk forwarder can't reach Optiplex on 9997**
+Check: (1) firewall rules applied on Optiplex, (2) receiving port enabled in Splunk UI, (3) `netstat -an | findstr 9997` shows `LISTENING`. Test from the Pi: `nc -zv 192.168.30.50 9997`.
+
+---
+
+## Planned Upgrades
+
+- **Active Directory lab** — laptop running Windows 10 VM + AD server, or cloud-hosted
+- **Second target** — RPi 4 running Juice Shop or Metasploitable on VLAN 20
