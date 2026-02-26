@@ -1,0 +1,26 @@
+# /etc/systemd/system/binfmt-qemu-x86_64.service
+#
+# Registers qemu-x86_64-static as the binfmt_misc handler for AMD64 ELF binaries.
+# Writing to /proc/sys/fs/binfmt_misc/register is not persistent across reboots,
+# so this service re-registers it at boot time.
+#
+# Install:
+#   sudo cp binfmt-qemu-x86_64.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable binfmt-qemu-x86_64.service
+#   sudo systemctl start binfmt-qemu-x86_64.service
+
+[Unit]
+Description=Register qemu-x86_64 binfmt_misc handler
+After=proc-sys-fs-binfmt_misc.mount
+Requires=proc-sys-fs-binfmt_misc.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -c "\
+  entry = b':qemu-x86_64:M:0:\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-x86_64-static:F\n';\
+  open('/proc/sys/fs/binfmt_misc/register','wb').write(entry)"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
