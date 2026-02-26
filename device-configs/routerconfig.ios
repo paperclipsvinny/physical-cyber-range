@@ -2,20 +2,16 @@
 ! Cisco 2621 — R1-CyberRange
 ! Router-on-a-stick configuration
 ! ============================================================
-
 hostname R1-CyberRange
 no ip domain-lookup
-ip routing
 enable secret <YOUR_PASSWORD_HERE>
-
 ! ------------------------------------------------------------
-! Fa0/0 — Attacker Pi direct link (VLAN 10)
+! Fa0/0 — Attacker Kali direct link (no trunk needed)
 ! ------------------------------------------------------------
 interface FastEthernet0/0
  description ATTACKER_KALI
  ip address 192.168.10.1 255.255.255.0
  no shutdown
-
 ! ------------------------------------------------------------
 ! Fa0/1 — Trunk to switch (parent interface, no IP)
 ! Subinterfaces below handle per-VLAN routing
@@ -24,7 +20,6 @@ interface FastEthernet0/1
  description TRUNK_TO_SWITCH
  no ip address
  no shutdown
-
 ! ------------------------------------------------------------
 ! Fa0/1.20 — VLAN 20 (Target)
 ! ------------------------------------------------------------
@@ -33,7 +28,6 @@ interface FastEthernet0/1.20
  encapsulation dot1Q 20
  ip address 192.168.20.1 255.255.255.0
  no shutdown
-
 ! ------------------------------------------------------------
 ! Fa0/1.30 — VLAN 30 (Splunk/SIEM)
 ! ------------------------------------------------------------
@@ -42,6 +36,5 @@ interface FastEthernet0/1.30
  encapsulation dot1Q 30
  ip address 192.168.30.1 255.255.255.0
  no shutdown
-
 end
 write memory
