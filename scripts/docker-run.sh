@@ -7,6 +7,8 @@
 # of ANSIBLE_BECOME settings. Skipping the official image entirely sidesteps
 # the problem: a plain Ubuntu container has no entrypoint, no Ansible, and no
 # privilege escalation needed since we run as root directly.
+#I decided to leave this in the repo because it's useful if anyone else wants to
+#try this, but I had already decided to run with the Optiplex instead. 
 
 docker rm -f splunk 2>/dev/null
 
