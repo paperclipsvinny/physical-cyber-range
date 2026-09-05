@@ -9,6 +9,7 @@ You can also read the overview level writeup at [saucedasecurity.com](https://sa
 
 ## Hardware
 ![Picture of the switch and router.](Images/IMG_3845.jpg)
+![Picture of the swaggy stickers that adorn my router.](Images/IMG_7530.jpeg)
 
 | Component | Device |
 |-----------|--------|
